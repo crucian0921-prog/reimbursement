@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Reimburse Assistant · 智能报销材料生成器</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">✦</span> AI Reimburse Assistant</div>
+</header>
+
+<main class="page">
+  <h1 class="page-title">智能报销材料生成器</h1>
+  <p class="page-subtitle">上传发票、订单截图及支付凭证，由 AI 自动完成信息补全、结构化处理与校验，一键导出符合财务要求的报销 Word 文档。</p>
+
+  <div class="layout">
+
+    <!-- ============ 左侧主列 ============ -->
+    <div class="main-col">
+
+      <!-- 基础信息 -->
+      <section class="card card-highlight">
+        <div class="card-head">
+          <h2><span class="bar"></span>基础信息</h2>
+          <span class="step-tag">STEP 01</span>
+        </div>
+
+        <label class="field">
+          <span class="field-label">报销事由</span>
+          <input type="text" id="f-reason" placeholder="例如：2024年春季学术研讨会午餐及物料采购" />
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">报销方式</span>
+            <select id="f-method">
+              <option value="对私转账">对私转账</option>
+              <option value="对公转账">对公转账</option>
+              <option value="现金报销">现金报销</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">活动时间</span>
+            <input type="date" id="f-activity-time" />
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">报销人姓名</span>
+            <input type="text" id="f-name" placeholder="输入真实姓名" />
+          </label>
+          <label class="field">
+            <span class="field-label">学号</span>
+            <input type="text" id="f-student-id" placeholder="10位数字编码" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field-label">联系方式</span>
+          <input type="text" id="f-contact" placeholder="手机号" />
+        </label>
+
+        <p class="field-hint">* 基础信息将自动填充至生成的 Word 封面及表格列</p>
+      </section>
+
+      <!-- 材料上传 -->
+      <section class="card">
+        <div class="card-head">
+          <h2><span class="bar"></span>材料上传</h2>
+          <span class="step-tag">STEP 02</span>
+        </div>
+
+        <div class="upload-grid">
+          <div class="upload-zone" data-type="invoices">
+            <div class="upload-icon">⬆</div>
+            <div class="upload-title">点击或拖拽上传</div>
+            <div class="upload-sub">支持 JPG, PNG, PDF · 可多选</div>
+            <input type="file" data-input="invoices" accept="image/*,.pdf" multiple hidden />
+            <div class="upload-count" data-count="invoices"></div>
+          </div>
+          <div class="upload-zone" data-type="orders">
+            <div class="upload-icon">⬆</div>
+            <div class="upload-title">点击或拖拽上传</div>
+            <div class="upload-sub">需包含明细与金额</div>
+            <input type="file" data-input="orders" accept="image/*,.pdf" multiple hidden />
+            <div class="upload-count" data-count="orders"></div>
+          </div>
+          <div class="upload-zone" data-type="payments">
+            <div class="upload-icon">⬆</div>
+            <div class="upload-title">点击或拖拽上传</div>
+            <div class="upload-sub">微信/支付宝/银行回执</div>
+            <input type="file" data-input="payments" accept="image/*,.pdf" multiple hidden />
+            <div class="upload-count" data-count="payments"></div>
+          </div>
+        </div>
+        <p class="field-hint">报销金额超过 200 元时，需额外上传审批截图 ——
+          <label class="inline-upload-link">
+            点此上传<input type="file" data-input="approval" accept="image/*,.pdf" hidden />
+          </label>
+          <span class="upload-count" data-count="approval"></span>
+        </p>
+
+        <div class="preview-row" id="preview-row"></div>
+      </section>
+
+      <!-- 证明材料明细 & 活动说明 -->
+      <section class="card">
+        <div class="card-head">
+          <h2><span class="bar"></span>证明材料明细 &amp; 活动说明</h2>
+        </div>
+
+        <table class="items-table" id="items-table">
+          <thead>
+            <tr><th>序号</th><th>名称明细</th><th>单价</th><th>数量</th><th class="num">合计</th></tr>
+          </thead>
+          <tbody id="items-tbody">
+            <tr class="empty-row"><td colspan="5">点击右侧「生成报销 Word」后，AI 识别结果会显示在这里</td></tr>
+          </tbody>
+          <tfoot>
+            <tr><td colspan="4">总计额</td><td class="num" id="items-total">¥ 0.00</td></tr>
+          </tfoot>
+        </table>
+
+        <div class="card-head" style="margin-top:20px;">
+          <h3 class="sub-label">活动策划与购买说明</h3>
+        </div>
+        <textarea id="f-purpose" rows="4" placeholder="简述本次活动用途及物料采购说明，将作为 Word 证明材料中的「用途」字段"></textarea>
+      </section>
+
+    </div>
+
+    <!-- ============ 右侧侧栏 ============ -->
+    <div class="side-col">
+
+      <section class="card">
+        <div class="card-head"><h2><span class="bar"></span>AI 处理状态</h2></div>
+        <div class="status-row" data-step="ocr">
+          <div>
+            <div class="status-title">OCR 识别</div>
+            <div class="status-sub" data-sub="ocr">等待材料上传</div>
+          </div>
+          <span class="status-pill" data-pill="ocr">待执行</span>
+        </div>
+        <div class="status-row" data-step="structuring">
+          <div>
+            <div class="status-title">AI 结构化</div>
+            <div class="status-sub" data-sub="structuring">等待 OCR 完成</div>
+          </div>
+          <span class="status-pill" data-pill="structuring">待执行</span>
+        </div>
+        <div class="status-row" data-step="validate">
+          <div>
+            <div class="status-title">校验规则执行</div>
+            <div class="status-sub" data-sub="validate">等待结构化完成</div>
+          </div>
+          <span class="status-pill" data-pill="validate">待执行</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2><span class="bar"></span>校验结果</h2>
+          <span class="step-tag">实时监控</span>
+        </div>
+        <div id="validation-result">
+          <p class="field-hint">完成「生成报销 Word」后会显示校验结果</p>
+        </div>
+      </section>
+
+      <section class="card summary-card">
+        <div class="summary-row"><span>发票数量</span><span id="sum-invoice-count">0 张</span></div>
+        <div class="summary-row"><span>关联记录</span><span id="sum-linked">—</span></div>
+        <div class="summary-row total"><span>报销总额预览</span><span id="sum-total">¥ 0.00</span></div>
+      </section>
+
+      <button class="btn-primary" id="btn-generate">📄 生成报销 Word</button>
+      <button class="btn-secondary" id="btn-download" disabled>⬇ 下载 Word</button>
+      <a href="#" class="json-link" id="link-json">查看结构化 JSON（开发模式）</a>
+      <p class="field-hint center">生成前请确认基础信息已补全，否则将影响生成结果</p>
+
+    </div>
+  </div>
+</main>
+
+<div class="modal" id="json-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>结构化 JSON</span>
+      <button id="modal-close">✕</button>
+    </div>
+    <pre id="json-content"></pre>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+@echo off
+chcp 65001 >nul
+echo ====================================
+echo AI 报销材料生成器 - 快速启动
+echo ====================================
+echo.
+
+REM 检查 Python 是否安装
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ❌ 未检测到 Python，请先安装 Python 3.10+
+    pause
+    exit /b 1
+)
+
+REM 检查是否配置了 API Key
+if "%OPENAI_API_KEY%"=="" (
+    echo ⚠️  警告: 未检测到 OPENAI_API_KEY 环境变量
+    echo.
+    echo 请先设置 API Key:
+    echo   set OPENAI_API_KEY=your-api-key-here
+    echo.
+    echo 然后重新运行此脚本
+    echo.
+    pause
+    exit /b 1
+)
+
+echo ✅ 环境检查通过
+echo ✅ API Key 已配置
+echo.
+echo 🚀 正在启动后端服务...
+echo 📍 服务地址: http://127.0.0.1:8000
+echo 📍 API 文档: http://127.0.0.1:8000/docs
+echo.
+echo 按 Ctrl+C 停止服务
+echo ====================================
+echo.
+
+python main.py
+
+pause
