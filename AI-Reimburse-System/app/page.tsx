@@ -1,5 +1,7 @@
 'use client';
 import React, { useState } from 'react';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || (typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : 'http://127.0.0.1:8000');
 // 定义明细表格的条目接口
 interface TableItem {
   id: number;
@@ -7,15 +9,31 @@ interface TableItem {
   price: number;
   quantity: number;
 }
+
+interface AiItem {
+  name?: string;
+  price?: string | number;
+  quantity?: string | number;
+  total?: string | number;
+}
+
+interface AiData {
+  items?: AiItem[];
+  amount?: string | number;
+  activity?: string;
+  image_groups?: unknown[];
+  image_base64_list?: string[];
+  [key: string]: unknown;
+}
 export default function ReimbursePage() {
   // === 状态管理 ===
   const [items, setItems] = useState<TableItem[]>([]);
   const [rawFiles, setRawFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [fullAiData, setFullAiData] = useState<any>({});
+  const [fullAiData, setFullAiData] = useState<AiData>({});
   
   // 规则校验需要的状态
-  const [checkStatus, setCheckStatus] = useState<string>('');
+  const [, setCheckStatus] = useState<string>('');
   const [checkDetails, setCheckDetails] = useState<string[]>([]);
   // 🔥 用 React State 代替 document.getElementById
   const [reason, setReason] = useState('');
@@ -55,8 +73,7 @@ formDataPayload.append('formData', JSON.stringify(baseInfo));
       formDataPayload.append('files', file);
     });
     try {
-      const backendIp = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
-      const requestUrl = `http://${backendIp}:8000/api/v1/reimburse/process`;
+      const requestUrl = `${API_BASE_URL}/api/v1/reimburse/process`;
       
       const response = await fetch(requestUrl, {
         method: 'POST',
@@ -73,7 +90,7 @@ formDataPayload.append('formData', JSON.stringify(baseInfo));
       const aiData = result.ai_data || {};
       setFullAiData(aiData);
       if (aiData.items && Array.isArray(aiData.items)) {
-        const formattedItems: TableItem[] = aiData.items.map((item: any, idx: number) => ({
+        const formattedItems: TableItem[] = aiData.items.map((item: AiItem, idx: number) => ({
           id: idx + 1,
           name: item.name || '未命名明细',        
           price: Number(item.price) || 0,        
@@ -115,8 +132,7 @@ formDataPayload.append('formData', JSON.stringify(baseInfo));
     };
     try {
       console.log("【前端调试】准备开始导出规范 Word，提交的数据:", payload);
-      const backendIp = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
-      const exportUrl = `http://${backendIp}:8000/api/v1/reimburse/export`;
+      const exportUrl = `${API_BASE_URL}/api/v1/reimburse/export`;
       const response = await fetch(exportUrl, {
         method: 'POST',
         headers: {

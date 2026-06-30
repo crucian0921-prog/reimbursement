@@ -5,7 +5,7 @@ import io  # 👈 新增
 from typing import List
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
+import requests
 
 app = FastAPI()
 app.add_middleware(
@@ -15,11 +15,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY", "e1726b4c8ff9472ca63193add519d253.9F5ghmSnO2OiEpau"),
-    base_url="https://open.bigmodel.cn/api/paas/v4/"
-)
-MODEL = "glm-4v-flash"
+ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY")
+ZHIPU_API_BASE = os.getenv("ZHIPU_API_BASE", "https://open.bigmodel.cn/api/paas/v4")
+MODEL = os.getenv("ZHIPU_MODEL", "glm-4v-flash")
+
+
+def call_zhipu_vision(messages):
+    if not ZHIPU_API_KEY:
+        raise HTTPException(status_code=500, detail="智谱 API Key 未配置，请设置环境变量 ZHIPU_API_KEY")
+
+    endpoint = f"{ZHIPU_API_BASE.rstrip('/')}/chat/completions"
+    try:
+        response = requests.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {ZHIPU_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": MODEL,
+                "messages": messages,
+                "temperature": 0.1,
+            },
+            timeout=120,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"智谱接口请求失败: {exc}") from exc
+
+    payload = response.json()
+    try:
+        return payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail=f"智谱接口返回格式异常: {payload}") from exc
+
+
+@app.get("/api/v1/reimburse/health")
+def health():
+    return {
+        "status": "ok",
+        "api_configured": bool(ZHIPU_API_KEY),
+        "model": MODEL,
+    }
 
 @app.post("/api/v1/reimburse/process")
 async def process(
@@ -72,12 +109,9 @@ async def process(
    purpose_statement (用途阐述)、dynamic_activity_name (活动名称)、dynamic_activity_info (活动常态化方案)、dynamic_relation (器材与活动关联)、dynamic_effect (预期效果)。
 """
     try:
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, *images_payload]}],
-            temperature=0.1
-        )
-        raw = resp.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+        raw = call_zhipu_vision([
+            {"role": "user", "content": [{"type": "text", "text": prompt}, *images_payload]}
+        ]).replace("```json", "").replace("```", "").strip()
         result_data = json.loads(raw)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI识别失败: {str(e)}")
