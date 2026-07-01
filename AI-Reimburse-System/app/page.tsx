@@ -1,8 +1,11 @@
 'use client';
+
 import React, { useState } from 'react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || (typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : 'http://127.0.0.1:8000');
-// 定义明细表格的条目接口
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  (typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : 'http://127.0.0.1:8000');
+
 interface TableItem {
   id: number;
   name: string;
@@ -15,125 +18,280 @@ interface AiItem {
   price?: string | number;
   quantity?: string | number;
   total?: string | number;
+  [key: string]: unknown;
 }
 
 interface AiData {
   items?: AiItem[];
   amount?: string | number;
-  activity?: string;
+  purpose_statement?: string;
+  purchase_explanation?: string;
+  activity_plan?: string;
+  activity_relation?: string;
+  expected_effect?: string;
+  advance_payment_note?: string;
+  dynamic_activity_name?: string;
+  dynamic_activity_info?: string;
+  dynamic_relation?: string;
+  dynamic_effect?: string;
   image_groups?: unknown[];
   image_base64_list?: string[];
   [key: string]: unknown;
 }
+
+interface DescriptionFields {
+  purpose_statement: string;
+  purchase_explanation: string;
+  activity_plan: string;
+  activity_relation: string;
+  expected_effect: string;
+  advance_payment_note: string;
+}
+
+const emptyDescriptionFields: DescriptionFields = {
+  purpose_statement: '',
+  purchase_explanation: '',
+  activity_plan: '',
+  activity_relation: '',
+  expected_effect: '',
+  advance_payment_note: '',
+};
+
+const parseMoney = (value: unknown): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const match = String(value ?? '').replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+};
+
+const firstValue = (data: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    const value = data[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+};
+
+const getAiItems = (aiData: AiData): AiItem[] => {
+  const nested =
+    aiData.data && typeof aiData.data === 'object' && !Array.isArray(aiData.data)
+      ? (aiData.data as Record<string, unknown>)
+      : {};
+  const candidates = [
+    aiData.items,
+    aiData.invoice_items,
+    aiData.goods,
+    aiData.products,
+    aiData.details,
+    aiData['商品清单'],
+    aiData['明细'],
+    nested.items,
+    nested.invoice_items,
+    nested.goods,
+    nested.products,
+    nested.details,
+  ];
+  return (candidates.find((value) => Array.isArray(value) && value.length > 0) || []) as AiItem[];
+};
+
+const inferAiAmount = (aiData: AiData, result: Record<string, unknown>): number => {
+  const amountKeys = ['amount', 'total_amount', 'order_paid_amount', 'paid_amount', 'total', '价税合计', '合计金额'];
+  for (const key of amountKeys) {
+    const amount = parseMoney(aiData[key] ?? result[key]);
+    if (amount > 0) return amount;
+  }
+  for (const key of ['purchase_explanation', 'advance_payment_note', 'purpose_statement']) {
+    const amount = parseMoney(aiData[key]);
+    if (amount > 0) return amount;
+  }
+  return 0;
+};
+
+const inferItemName = (aiData: AiData): string => {
+  const explicitName = firstValue(aiData, ['name', 'product_name', 'item_name', 'goods_name', 'title']);
+  if (explicitName) return String(explicitName);
+
+  const text = ['purchase_explanation', 'purpose_statement', 'activity_relation']
+    .map((key) => String(aiData[key] || ''))
+    .join(' ');
+  const patterns = [/(?:购买|采购|采购物资为|所购物品为)([^，。,；;\n]+)/, /采购类别为([^，。,；;\n]+)/];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const name = match?.[1]?.trim();
+    if (name && !['训练物资', '相关物资', '社团活动相关物资'].includes(name)) return name;
+  }
+  return '请根据发票和订单截图核对商品名称';
+};
+
 export default function ReimbursePage() {
-  // === 状态管理 ===
   const [items, setItems] = useState<TableItem[]>([]);
   const [rawFiles, setRawFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fullAiData, setFullAiData] = useState<AiData>({});
-  
-  // 规则校验需要的状态
+  const [descriptionFields, setDescriptionFields] = useState<DescriptionFields>(emptyDescriptionFields);
   const [, setCheckStatus] = useState<string>('');
   const [checkDetails, setCheckDetails] = useState<string[]>([]);
-  // 🔥 用 React State 代替 document.getElementById
   const [reason, setReason] = useState('');
   const [name, setName] = useState('');
   const [studentId, setStudentId] = useState('');
   const [contact, setContact] = useState('');
   const [method, setMethod] = useState('对私转账');
   const [activityTime, setActivityTime] = useState('');
-  // 文件选择捕获函数
+
+  const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const canExportWord = items.length > 0 || Object.keys(fullAiData).length > 0;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selectedFiles = Array.from(e.target.files);
       setRawFiles((prev) => [...prev, ...selectedFiles]);
     }
+    e.target.value = '';
   };
-  // 核心后端接口连接函数
+
+  const handleRemoveItem = (id: number) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleClearFiles = () => {
+    setRawFiles([]);
+    setItems([]);
+    setFullAiData({});
+    setDescriptionFields(emptyDescriptionFields);
+    setCheckDetails([]);
+  };
+
+  const handleDescriptionChange = (key: keyof DescriptionFields, value: string) => {
+    setDescriptionFields((prev) => ({ ...prev, [key]: value }));
+  };
+
   const handleExtractItems = async () => {
-    console.log("【前端调试】开始触发‘提取并预览明细’。当前就绪文件数:", rawFiles.length);
+    if (rawFiles.length === 0) {
+      alert('请先上传发票、订单截图或支付记录。');
+      return;
+    }
+
     setIsLoading(true);
     const formDataPayload = new FormData();
-    
-    // 自动收集状态里的数据，不再通过 DOM 元素抓取，绝对不卡死
     const baseInfo = {
-  reason: reason,
-  name: name,
-  studentId: studentId,
-  contact: contact,
-};
-// 双重保险，不管后端是用旧的 formData 接收还是新的 user_info 接收，一次性喂饱它！
-formDataPayload.append('user_info', JSON.stringify(baseInfo));
-formDataPayload.append('formData', JSON.stringify(baseInfo));
-    
-    // 严格对齐后端 main.py 接收的变量名：'formData'
+      reason,
+      name,
+      studentId,
+      contact,
+      method,
+      activityTime,
+    };
+
+    formDataPayload.append('user_info', JSON.stringify(baseInfo));
     formDataPayload.append('formData', JSON.stringify(baseInfo));
-    // 打包选中的所有真实文件
     rawFiles.forEach((file) => {
       formDataPayload.append('files', file);
     });
+
     try {
-      const requestUrl = `${API_BASE_URL}/api/v1/reimburse/process`;
-      
-      const response = await fetch(requestUrl, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/reimburse/process`, {
         method: 'POST',
-        body: formDataPayload, 
+        body: formDataPayload,
       });
-      
+
       if (!response.ok) {
-        throw new Error(`后端返回异常，状态码: ${response.status}`);
+        const errorText = await response.text();
+        let detail = errorText;
+        try {
+          const parsed = JSON.parse(errorText);
+          detail = parsed.detail || parsed.message || errorText;
+        } catch {
+          detail = errorText;
+        }
+        throw new Error(`后端返回异常，状态码：${response.status}。原因：${detail}`);
       }
+
       const result = await response.json();
-      console.log("【前端调试】后端返回的完整原始 JSON 数据:", result);
-      
-      // 1. 提取并映射发票商品明细
       const aiData = result.ai_data || {};
       setFullAiData(aiData);
-      if (aiData.items && Array.isArray(aiData.items)) {
-        const formattedItems: TableItem[] = aiData.items.map((item: AiItem, idx: number) => ({
-          id: idx + 1,
-          name: item.name || '未命名明细',        
-          price: Number(item.price) || 0,        
-          quantity: Number(item.quantity) || 1,
-        }));
+      setDescriptionFields({
+        purpose_statement: String(aiData.purpose_statement || ''),
+        purchase_explanation: String(aiData.purchase_explanation || ''),
+        activity_plan: String(
+          aiData.activity_plan ||
+            [aiData.dynamic_activity_name ? `活动名称：${aiData.dynamic_activity_name}` : '', aiData.dynamic_activity_info || '']
+              .filter(Boolean)
+              .join('\n'),
+        ),
+        activity_relation: String(aiData.activity_relation || aiData.dynamic_relation || ''),
+        expected_effect: String(aiData.expected_effect || aiData.dynamic_effect || ''),
+        advance_payment_note: String(aiData.advance_payment_note || ''),
+      });
+
+      const recognizedItems = getAiItems(aiData);
+      if (recognizedItems.length > 0) {
+        const formattedItems: TableItem[] = recognizedItems.map((item: AiItem, idx: number) => {
+          const itemRecord = item as Record<string, unknown>;
+          const itemName = firstValue(itemRecord, [
+            'name',
+            'product_name',
+            'item_name',
+            'goods_name',
+            'title',
+            '名称',
+            '商品名称',
+            '项目名称',
+          ]);
+          const price = firstValue(itemRecord, ['price', 'unit_price', '单价', '金额']);
+          const total = firstValue(itemRecord, ['total', 'amount', 'subtotal', 'line_total', '价税合计', '总价', '合计']);
+          const quantity = firstValue(itemRecord, ['quantity', 'qty', 'count', 'num', '数量']);
+          return {
+            id: idx + 1,
+            name: String(itemName || '未命名明细'),
+            price: parseMoney(price || total) || 0,
+            quantity: parseMoney(quantity) || 1,
+          };
+        });
         setItems(formattedItems);
       } else {
-        const totalAmt = aiData.amount || result.amount || 0;
-        if (totalAmt > 0) {
-          setItems([{ id: 1, name: aiData.activity || '发票消费总计', price: Number(totalAmt), quantity: 1 }]);
-        }
+        const totalAmt = inferAiAmount(aiData, result);
+        setItems(totalAmt > 0 ? [{ id: 1, name: inferItemName(aiData), price: Number(totalAmt), quantity: 1 }] : []);
       }
-      // 2. 保存后端返回的校验状态和细节说明
+
       if (result.check_status) {
         setCheckStatus(result.check_status);
         setCheckDetails(result.check_details || []);
       }
-      
-      alert('🎉 智谱 AI 提取与合规校验成功！');
+
+      alert('AI 提取与合规校验成功。');
     } catch (error) {
-      console.error('【❌ 请求失败】', error);
-      alert(`提取失败，请检查后端。`);
+      console.error('请求失败', error);
+      alert(`提取失败：${error instanceof Error ? error.message : '请检查后端服务。'}`);
     } finally {
       setIsLoading(false);
     }
   };
-// 🔥 新增：触发后端动态生成 Word 并执行浏览器下载
+
   const handleExportWord = async () => {
-    // 基础信息与发票识别结果打包
     const payload = {
       base_info: {
-        reason: reason,
-        name: name,
-        studentId: studentId,
-        contact: contact,
+        reason,
+        name,
+        studentId,
+        contact,
+        method,
+        activityTime,
       },
-      ai_data: fullAiData,
-      check_details: checkDetails, // 规则校验报告
+      ai_data: {
+        ...fullAiData,
+        ...descriptionFields,
+        amount: totalAmount,
+        items: items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.price * item.quantity,
+        })),
+      },
+      check_details: checkDetails,
     };
+
     try {
-      console.log("【前端调试】准备开始导出规范 Word，提交的数据:", payload);
-      const exportUrl = `${API_BASE_URL}/api/v1/reimburse/export`;
-      const response = await fetch(exportUrl, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/reimburse/export`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,9 +299,9 @@ formDataPayload.append('formData', JSON.stringify(baseInfo));
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        throw new Error(`Word 生成异常，状态码: ${response.status}`);
+        throw new Error(`Word 生成异常，状态码：${response.status}`);
       }
-      // 处理二进制文件流并自动触发浏览器下载
+
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -153,191 +311,275 @@ formDataPayload.append('formData', JSON.stringify(baseInfo));
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(downloadUrl);
-      
-      alert('🎉 规范报销 Word 文档已成功生成并下载！');
+
+      alert('规范报销 Word 已生成并下载。');
     } catch (error) {
-      console.error('【❌ 导出失败】', error);
-      alert('导出 Word 失败，请确保后端服务在运行。');
+      console.error('导出失败', error);
+      alert('导出 Word 失败，请确保后端服务正在运行。');
     }
   };
-  // 计算报销总金额
-  const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
   return (
-    <div style={{ backgroundColor: '#f4f6fa', minHeight: '100vh', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-      
-      {/* 顶部导航 */}
-      <header style={{ padding: '15px 30px', background: '#fff', borderBottom: '1px solid #e5e7eb', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center' }}>
-        <div style={{ fontWeight: 'bold', color: '#3b82f6', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '20px' }}>✦</span> AI 智能报销助手
+    <div className="reimburse-shell">
+      <header className="top-nav">
+        <div className="brand-lockup">
+          <div className="brand-mark">R</div>
+          <div>
+            <div className="brand-title">SIGS Reimburse Studio</div>
+            <div className="brand-subtitle">AI 报销材料整理</div>
+          </div>
+        </div>
+        <div className="nav-status">
+          <span>Backend</span>
+          <strong>localhost:8000</strong>
         </div>
       </header>
-      {/* 主体区域 */}
-      <main style={{ padding: '30px', maxWidth: '1400px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', gap: '25px', alignItems: 'flex-start' }}>
-          
-          {/* 左侧主要填写区域 */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '25px' }}>
-            
-            {/* STEP 01: 基础信息 */}
-            <section style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1f2937', margin: 0 }}>基础信息</h2>
-                <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>STEP 01</span>
+
+      <main className="studio-wrap">
+        <section className="hero-panel">
+          <div className="hero-copy">
+            <p className="eyebrow">AI assisted reimbursement</p>
+            <h1>把发票、订单和说明整理成一份更像人工制作的报销 Word。</h1>
+            <p className="hero-note">上传材料后先预览明细和说明，确认无误再生成规范文档。</p>
+          </div>
+          <div className="hero-folder" aria-hidden="true">
+            <div className="folder-tab" />
+            <div className="folder-body">
+              <span>DOCX</span>
+            </div>
+          </div>
+          <div className="hero-stats" aria-label="当前报销数据">
+            <div>
+              <span>文件</span>
+              <strong>{rawFiles.length}</strong>
+            </div>
+            <div>
+              <span>明细</span>
+              <strong>{items.length}</strong>
+            </div>
+            <div>
+              <span>金额</span>
+              <strong>¥ {totalAmount.toFixed(2)}</strong>
+            </div>
+          </div>
+        </section>
+
+        <div className="workbench">
+          <div className="main-stack">
+            <section className="glass-card base-card">
+              <div className="section-head">
+                <div>
+                  <span className="step-label">01</span>
+                  <h2>基础信息</h2>
+                </div>
+                <p>这些内容会写入封面、证明材料和垫付说明。</p>
               </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 500, color: '#4b5563' }}>报销事由</span>
-                  <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请输入报销事由..." style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none' }} />
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#4b5563' }}>报销方式</span>
-                    <select value={method} onChange={(e) => setMethod(e.target.value)} style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', background: '#fff' }}>
-                      <option value="对私转账">对私转账</option>
-                      <option value="对公转账">对公转账</option>
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#4b5563' }}>活动时间</span>
-                    <input type="date" value={activityTime} onChange={(e) => setActivityTime(e.target.value)} style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' }} />
-                  </div>
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#4b5563' }}>报销人姓名</span>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入真实姓名" style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' }} />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#4b5563' }}>学号</span>
-                    <input type="text" value={studentId} onChange={(e) => setStudentId(e.target.value)} placeholder="请输入10位数字学号" style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' }} />
-                  </div>
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 500, color: '#4b5563' }}>联系方式</span>
-                  <input type="text" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="请输入手机号" style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' }} />
-                </div>
+
+              <div className="form-grid">
+                <label className="field field-wide">
+                  <span>报销事由</span>
+                  <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例如：2026广东省省赛-跆拳道比赛" />
+                </label>
+                <label className="field">
+                  <span>报销方式</span>
+                  <select value={method} onChange={(e) => setMethod(e.target.value)}>
+                    <option value="对私转账">对私转账</option>
+                    <option value="对公转账">对公转账</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>活动时间</span>
+                  <input type="date" value={activityTime} onChange={(e) => setActivityTime(e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>报销人姓名</span>
+                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入真实姓名" />
+                </label>
+                <label className="field">
+                  <span>学号</span>
+                  <input type="text" value={studentId} onChange={(e) => setStudentId(e.target.value)} placeholder="请输入学号" />
+                </label>
+                <label className="field field-wide">
+                  <span>联系方式</span>
+                  <input type="text" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="请输入手机号" />
+                </label>
               </div>
             </section>
-            {/* STEP 02: 材料上传 */}
-            <section style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1f2937', margin: 0 }}>材料上传</h2>
-                <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>STEP 02</span>
+
+            <section className="glass-card upload-card">
+              <div className="section-head">
+                <div>
+                  <span className="step-label">02</span>
+                  <h2>材料上传</h2>
+                </div>
+                <button type="button" className="ghost-button" onClick={handleClearFiles} disabled={rawFiles.length === 0}>
+                  清空
+                </button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
-                <div style={{ position: 'relative', border: '2px dashed #3b82f6', padding: '20px', textAlign: 'center', borderRadius: '10px', background: '#f8fafc', cursor: 'pointer' }}>
-                  <input type="file" accept="image/*,.pdf" multiple onChange={handleFileChange} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 10 }} />
-                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>📄</div>
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>上传发票材料</div>
-                </div>
-                <div style={{ position: 'relative', border: '2px dashed #3b82f6', padding: '20px', textAlign: 'center', borderRadius: '10px', background: '#f8fafc', cursor: 'pointer' }}>
-                  <input type="file" accept="image/*,.pdf" multiple onChange={handleFileChange} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 10 }} />
-                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>💻</div>
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>上传订单截图</div>
-                </div>
-                <div style={{ position: 'relative', border: '2px dashed #3b82f6', padding: '20px', textAlign: 'center', borderRadius: '10px', background: '#f8fafc', cursor: 'pointer' }}>
-                  <input type="file" accept="image/*,.pdf" multiple onChange={handleFileChange} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 10 }} />
-                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>💳</div>
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>上传支付记录</div>
-                </div>
+
+              <div className="upload-grid">
+                {[
+                  ['发票材料', '电子发票、酒店票据等'],
+                  ['订单截图', '购买详情、商品页面'],
+                  ['支付记录', '微信、支付宝、银行卡流水'],
+                ].map(([title, sub]) => (
+                  <label className="upload-tile" key={title}>
+                    <input type="file" accept="image/*,.pdf" multiple onChange={handleFileChange} />
+                    <span className="upload-symbol">+</span>
+                    <strong>{title}</strong>
+                    <small>{sub}</small>
+                  </label>
+                ))}
               </div>
+
               {rawFiles.length > 0 && (
-                <div style={{ marginTop: '20px', fontSize: '13px', color: '#1d4ed8', background: '#eff6ff', padding: '15px', borderRadius: '8px' }}>
-                  <div style={{ fontWeight: 'bold' }}>📂 已缓存文件（共 {rawFiles.length} 个）：</div>
-                  <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                    {rawFiles.map((file, idx) => <li key={idx}>{file.name}</li>)}
-                  </ul>
+                <div className="file-strip">
+                  <div className="file-strip-head">
+                    <strong>已缓存文件</strong>
+                    <span>共 {rawFiles.length} 个</span>
+                  </div>
+                  <div className="file-list">
+                    {rawFiles.map((file, idx) => (
+                      <span key={`${file.name}-${idx}`} className="file-chip">
+                        {file.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </section>
-            {/* 明细预览表格 */}
-            <section style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1f2937', margin: 0 }}>证明材料明细 &amp; 活动说明</h2>
-                <button type="button" disabled={isLoading} onClick={handleExtractItems} style={{ padding: '10px 20px', backgroundColor: isLoading ? '#93c5fd' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: isLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-                  {isLoading ? '⏳ 正在提取中...' : '🔍 提取并预览明细'}
+
+            <section className="glass-card preview-card">
+              <div className="section-head preview-head">
+                <div>
+                  <span className="step-label">03</span>
+                  <h2>证明材料明细 & 活动说明</h2>
+                </div>
+                <button type="button" className="primary-button" disabled={isLoading} onClick={handleExtractItems}>
+                  {isLoading ? '正在提取...' : '提取并预览明细'}
                 </button>
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', fontSize: '14px', color: '#64748b' }}>
-                    <th style={{ padding: '12px' }}>序号</th>
-                    <th>名称明细</th>
-                    <th>单价</th>
-                    <th>数量</th>
-                    <th style={{ textAlign: 'right', padding: '12px' }}>合计</th>
-                  </tr>
-                </thead>
-                <tbody style={{ fontSize: '14px', color: '#334155' }}>
-                  {items.length === 0 ? (
+
+              <div className="table-shell">
+                <table className="items-table">
+                  <thead>
                     <tr>
-                      <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>暂无明细。上传后点击提取。</td>
+                      <th>序号</th>
+                      <th>名称明细</th>
+                      <th>单价</th>
+                      <th>数量</th>
+                      <th className="num">合计</th>
+                      <th className="center">操作</th>
                     </tr>
-                  ) : (
-                    items.map((item, index) => (
-                      <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '12px' }}>{index + 1}</td>
-                        <td style={{ fontWeight: 500 }}>{item.name}</td>
-                        <td>¥ {item.price.toFixed(2)}</td>
-                        <td>{item.quantity}</td>
-                        <td style={{ textAlign: 'right', padding: '12px', fontWeight: 'bold' }}>¥ {(item.price * item.quantity).toFixed(2)}</td>
+                  </thead>
+                  <tbody>
+                    {items.length === 0 ? (
+                      <tr className="empty-row">
+                        <td colSpan={6}>暂无明细。上传材料后点击提取。</td>
                       </tr>
-                    ))
+                    ) : (
+                      items.map((item, index) => (
+                        <tr key={item.id}>
+                          <td>{index + 1}</td>
+                          <td className="item-name">{item.name}</td>
+                          <td>¥ {item.price.toFixed(2)}</td>
+                          <td>{item.quantity}</td>
+                          <td className="num">¥ {(item.price * item.quantity).toFixed(2)}</td>
+                          <td className="center">
+                            <button type="button" className="danger-button" onClick={() => handleRemoveItem(item.id)}>
+                              删除
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {canExportWord && (
+                <div className="description-grid">
+                  <div className="description-title">
+                    <h3>生成说明预览</h3>
+                    <p>这里的内容可以人工修改，最终 Word 会使用你修改后的版本。</p>
+                  </div>
+                  <label className="field field-wide">
+                    <span>用途</span>
+                    <textarea value={descriptionFields.purpose_statement} onChange={(e) => handleDescriptionChange('purpose_statement', e.target.value)} rows={3} />
+                  </label>
+                  <label className="field field-wide">
+                    <span>购买说明</span>
+                    <textarea value={descriptionFields.purchase_explanation} onChange={(e) => handleDescriptionChange('purchase_explanation', e.target.value)} rows={4} />
+                  </label>
+                  <label className="field field-wide">
+                    <span>活动策划</span>
+                    <textarea value={descriptionFields.activity_plan} onChange={(e) => handleDescriptionChange('activity_plan', e.target.value)} rows={5} />
+                  </label>
+                  <label className="field">
+                    <span>器材与活动关联</span>
+                    <textarea value={descriptionFields.activity_relation} onChange={(e) => handleDescriptionChange('activity_relation', e.target.value)} rows={5} />
+                  </label>
+                  <label className="field">
+                    <span>预期效果</span>
+                    <textarea value={descriptionFields.expected_effect} onChange={(e) => handleDescriptionChange('expected_effect', e.target.value)} rows={5} />
+                  </label>
+                  {descriptionFields.advance_payment_note.trim() && (
+                    <label className="field field-wide">
+                      <span>垫付说明</span>
+                      <textarea value={descriptionFields.advance_payment_note} onChange={(e) => handleDescriptionChange('advance_payment_note', e.target.value)} rows={6} />
+                    </label>
                   )}
-                </tbody>
-              </table>
+                </div>
+              )}
             </section>
           </div>
-          {/* 右侧边栏 */}
-          <div style={{ width: '350px', display: 'flex', flexDirection: 'column', gap: '25px' }}>
-            {/* 校验结果 */}
-            <section style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#1f2937', marginBottom: '15px' }}>规则校验结果</h2>
+
+          <aside className="side-stack">
+            <section className="summary-panel">
+              <p className="eyebrow">ready to export</p>
+              <h2>报销总额</h2>
+              <div className="money">¥ {totalAmount.toFixed(2)}</div>
+              <button type="button" className="export-button" onClick={handleExportWord} disabled={!canExportWord}>
+                生成规范报销 Word
+              </button>
+            </section>
+
+            <section className="side-card">
+              <div className="side-card-head">
+                <h2>材料状态</h2>
+                <span>{isLoading ? '处理中' : canExportWord ? '已预览' : '待提取'}</span>
+              </div>
+              <div className="status-list">
+                <div>
+                  <strong>{rawFiles.length}</strong>
+                  <span>上传文件</span>
+                </div>
+                <div>
+                  <strong>{items.length}</strong>
+                  <span>识别明细</span>
+                </div>
+                <div>
+                  <strong>{checkDetails.length}</strong>
+                  <span>校验结果</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="side-card">
+              <div className="side-card-head">
+                <h2>规则校验结果</h2>
+              </div>
               {checkDetails.length === 0 ? (
-                <p style={{ color: '#94a3b8', margin: 0 }}>暂无校验结果</p>
+                <p className="empty-note">暂无校验结果。</p>
               ) : (
-                <ul style={{ paddingLeft: '0', margin: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <ul className="check-list">
                   {checkDetails.map((detail, i) => (
-                    <li key={i} style={{ padding: '6px 10px', borderRadius: '6px', backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
-                      {detail}
-                    </li>
+                    <li key={i}>{detail}</li>
                   ))}
                 </ul>
               )}
             </section>
-            {/* ==================== 👇 找到这个绿色按钮，用这段完全替换 👇 ==================== */}
-<button 
-  type="button"
-  onClick={handleExportWord}
-  disabled={items.length === 0} // 如果没有提取出明细，不让点击
-  style={{ 
-    width: '100%', 
-    padding: '14px', 
-    backgroundColor: items.length === 0 ? '#9ca3af' : '#10b981', // 没数据时变灰，有数据时是漂亮的绿色
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: items.length === 0 ? 'not-allowed' : 'pointer',
-    fontWeight: 'bold',
-    fontSize: '15px',
-    boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.2)'
-  }}
->
-  📄 生成规范报销 Word
-</button>
-{/* ==================== 👆 替换结束 👆 ==================== */}
-            {/* 汇总计算 */}
-            <section style={{ background: '#fff', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '18px' }}>
-                <span>报销总额：</span>
-                <span style={{ color: '#ef4444' }}>¥ {totalAmount.toFixed(2)}</span>
-              </div>
-            </section>
-          </div>
+          </aside>
         </div>
       </main>
     </div>
