@@ -338,14 +338,15 @@ export default function ReimbursePage() {
       <main className="studio-wrap">
         <section className="hero-panel">
           <div className="hero-copy">
-            <p className="eyebrow">AI assisted reimbursement</p>
-            <h1>把发票、订单和说明整理成一份更像人工制作的报销 Word。</h1>
-            <p className="hero-note">上传材料后先预览明细和说明，确认无误再生成规范文档。</p>
+            <p className="eyebrow">Tsinghua SIGS reimbursement</p>
+            <h1>SIGS 智能报销工作台</h1>
+            <p className="hero-note">面向社团活动、训练物资和赛事差旅材料整理。先预览明细与说明，确认后生成规范 Word。</p>
           </div>
           <div className="hero-folder" aria-hidden="true">
-            <div className="folder-tab" />
-            <div className="folder-body">
-              <span>DOCX</span>
+            <div className="sigs-card">
+              <span>清华 SIGS</span>
+              <strong>Reimburse</strong>
+              <small>AI Material Studio</small>
             </div>
           </div>
           <div className="hero-stats" aria-label="当前报销数据">
@@ -364,7 +365,7 @@ export default function ReimbursePage() {
           </div>
         </section>
 
-        <div className="workbench">
+        <div className="workbench" id="workbench">
           <div className="main-stack">
             <section className="glass-card base-card">
               <div className="section-head">

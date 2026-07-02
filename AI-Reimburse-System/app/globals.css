@@ -1,16 +1,17 @@
 :root {
-  --ink: #17211b;
-  --muted: #65716a;
-  --paper: #fbf7ef;
-  --paper-soft: #f4efe5;
-  --mint: #dcefe5;
-  --lavender: #ded2ff;
-  --violet: #8f77d8;
-  --green: #2d6a4f;
-  --clay: #c9825b;
-  --line: rgba(23, 33, 27, 0.12);
+  --ink: #171326;
+  --muted: #6f6883;
+  --paper: #fbf9ff;
+  --paper-soft: #f1edff;
+  --mint: #e8f5f0;
+  --lavender: #e7dcff;
+  --violet: #6f4fc7;
+  --violet-deep: #4b2b8f;
+  --green: #23615b;
+  --clay: #9d6de8;
+  --line: rgba(44, 34, 78, 0.12);
   --white: rgba(255, 255, 255, 0.82);
-  --shadow: 0 24px 60px rgba(36, 42, 38, 0.12);
+  --shadow: 0 24px 60px rgba(56, 42, 92, 0.12);
   --radius: 8px;
 }
 
@@ -26,8 +27,9 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    linear-gradient(90deg, rgba(222, 210, 255, 0.45) 0 8%, transparent 8% 92%, rgba(220, 239, 229, 0.7) 92%),
-    linear-gradient(180deg, #fffaf2 0%, #f6f1e8 56%, #eee8dd 100%);
+    radial-gradient(circle at 12% 16%, rgba(231, 220, 255, 0.9) 0 16%, transparent 32%),
+    radial-gradient(circle at 86% 12%, rgba(232, 245, 240, 0.95) 0 14%, transparent 30%),
+    linear-gradient(180deg, #fffdf8 0%, #f5f1ff 48%, #f7f6fb 100%);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
 }
 
@@ -55,9 +57,9 @@ button {
   justify-content: space-between;
   gap: 16px;
   padding: 18px clamp(18px, 4vw, 56px);
-  background: rgba(255, 250, 242, 0.84);
+  background: rgba(255, 253, 248, 0.84);
   backdrop-filter: blur(18px);
-  border-bottom: 1px solid rgba(23, 33, 27, 0.08);
+  border-bottom: 1px solid rgba(44, 34, 78, 0.08);
 }
 
 .brand-lockup {
@@ -73,7 +75,7 @@ button {
   place-items: center;
   border-radius: 8px;
   color: #fff;
-  background: var(--ink);
+  background: linear-gradient(135deg, var(--ink), var(--violet-deep));
   font-weight: 900;
   letter-spacing: 0;
   box-shadow: 6px 6px 0 var(--lavender);
@@ -113,31 +115,31 @@ button {
 
 .hero-panel {
   position: relative;
-  min-height: 330px;
+  min-height: 260px;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) 360px minmax(260px, 0.8fr);
+  grid-template-columns: minmax(0, 1.1fr) 300px minmax(250px, 0.78fr);
   gap: 28px;
   align-items: center;
   overflow: hidden;
-  padding: clamp(28px, 4vw, 54px);
-  border: 1px solid rgba(23, 33, 27, 0.1);
+  padding: clamp(26px, 3.6vw, 46px);
+  border: 1px solid rgba(86, 64, 153, 0.14);
   border-radius: 8px;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.44)),
-    linear-gradient(135deg, #fff7e9 0%, #e9f4ed 54%, #dfd3ff 100%);
+    linear-gradient(90deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.56)),
+    linear-gradient(135deg, #fffdf8 0%, #efe8ff 52%, #e4f3ef 100%);
   box-shadow: var(--shadow);
 }
 
 .hero-panel::before {
-  content: "REIMBURSE";
+  content: "SIGS";
   position: absolute;
-  right: -20px;
-  top: -44px;
+  right: 28px;
+  top: -34px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(80px, 15vw, 220px);
+  font-size: clamp(92px, 17vw, 230px);
   line-height: 0.9;
   font-weight: 900;
-  color: rgba(23, 33, 27, 0.07);
+  color: rgba(75, 43, 143, 0.06);
   pointer-events: none;
 }
 
@@ -154,17 +156,18 @@ button {
 }
 
 .hero-copy h1 {
-  max-width: 720px;
+  max-width: 760px;
   margin: 0;
   font-family: Georgia, "Times New Roman", "PingFang SC", serif;
-  font-size: clamp(34px, 5vw, 72px);
-  line-height: 0.98;
+  font-size: clamp(34px, 4.1vw, 58px);
+  line-height: 1.02;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .hero-note {
   max-width: 520px;
-  margin: 20px 0 0;
+  margin: 16px 0 0;
   color: var(--muted);
   font-size: 15px;
   line-height: 1.7;
@@ -173,37 +176,48 @@ button {
 .hero-folder {
   position: relative;
   z-index: 1;
-  height: 220px;
+  height: 210px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.folder-tab {
-  position: absolute;
-  top: 20px;
-  left: 80px;
-  width: 130px;
-  height: 46px;
-  border-radius: 8px 8px 0 0;
-  background: #73b7dc;
-}
-
-.folder-body {
-  width: 290px;
-  height: 178px;
+.sigs-card {
+  width: 250px;
+  height: 172px;
   display: grid;
-  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 8px;
-  background: linear-gradient(180deg, #8bc8e7, #62aacf);
-  box-shadow: 0 24px 44px rgba(34, 91, 121, 0.23);
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(111, 79, 199, 0.92), rgba(35, 97, 91, 0.9)),
+    var(--violet-deep);
+  box-shadow: 0 24px 44px rgba(75, 43, 143, 0.22);
 }
 
-.folder-body span {
+.sigs-card span {
+  width: fit-content;
+  padding: 6px 9px;
+  border-radius: 999px;
   color: rgba(255, 255, 255, 0.86);
-  font-weight: 900;
-  font-size: 44px;
-  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.sigs-card strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.sigs-card small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .hero-stats {
@@ -219,7 +233,7 @@ button {
   justify-content: space-between;
   gap: 18px;
   padding: 18px 20px;
-  border: 1px solid rgba(23, 33, 27, 0.12);
+  border: 1px solid rgba(86, 64, 153, 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.62);
 }
@@ -259,7 +273,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 16px 40px rgba(36, 42, 38, 0.08);
+  box-shadow: 0 16px 40px rgba(56, 42, 92, 0.08);
 }
 
 .glass-card {
@@ -350,8 +364,8 @@ button {
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: var(--green);
-  box-shadow: 0 0 0 4px rgba(45, 106, 79, 0.12);
+  border-color: var(--violet);
+  box-shadow: 0 0 0 4px rgba(111, 79, 199, 0.12);
 }
 
 .upload-grid {
@@ -377,8 +391,8 @@ button {
 
 .upload-tile:hover {
   transform: translateY(-2px);
-  border-color: var(--green);
-  background: rgba(220, 239, 229, 0.78);
+  border-color: var(--violet);
+  background: rgba(231, 220, 255, 0.56);
 }
 
 .upload-tile input {
@@ -395,7 +409,7 @@ button {
   place-items: center;
   border-radius: 8px;
   color: #fff;
-  background: var(--green);
+  background: var(--violet-deep);
   font-size: 26px;
   line-height: 1;
 }
@@ -577,7 +591,7 @@ button {
   padding: 26px;
   color: #fff;
   background:
-    linear-gradient(135deg, rgba(23, 33, 27, 0.96), rgba(45, 106, 79, 0.92)),
+    linear-gradient(135deg, rgba(23, 19, 38, 0.96), rgba(75, 43, 143, 0.9)),
     var(--ink);
 }
 
@@ -601,8 +615,8 @@ button {
 .export-button {
   width: 100%;
   padding: 14px 16px;
-  color: var(--ink);
-  background: #fff4ca;
+  color: #fff;
+  background: linear-gradient(135deg, #7357d6, #23615b);
 }
 
 .side-card {
@@ -698,7 +712,7 @@ button {
 
 @media (max-width: 760px) {
   body {
-    background: linear-gradient(180deg, #fffaf2 0%, #f2ece2 100%);
+    background: linear-gradient(180deg, #fffdf8 0%, #f4efff 100%);
   }
 
   .top-nav {
@@ -722,6 +736,7 @@ button {
 
   .hero-copy h1 {
     font-size: 32px;
+    white-space: normal;
   }
 
   .hero-stats {
